@@ -1629,13 +1629,15 @@ const SubworkItems: React.FC<SubworkItemsProps> = ({
 
                         <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleViewMeasurements(item)}
-                              className="text-purple-600 hover:text-purple-900 p-1 rounded"
-                              title="View Measurements"
-                            >
-                              <Calculator className="w-4 h-4" />
-                            </button>
+                            {item.category !== 'royalty' && item.category !== 'testing' && (
+                              <button
+                                onClick={() => handleViewMeasurements(item)}
+                                className="text-purple-600 hover:text-purple-900 p-1 rounded"
+                                title="View Measurements"
+                              >
+                                <Calculator className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               onClick={async () => {
                                 const parentSrNo = await ensureParentSubworkSrNo();

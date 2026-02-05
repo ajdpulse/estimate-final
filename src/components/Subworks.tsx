@@ -744,6 +744,14 @@ const [showQuarryChartModal, setShowQuarryChartModal] = useState(false);
     }
   };
 
+  useEffect(() => {
+  // Reset selections when work changes
+  setSelectedSubworkIds([]);
+  setSubworkItemCounts({});
+  setCurrentSubworkForItems(null);
+}, [selectedWorkId]);
+
+
   const handleSubworkCheckbox = (subworkId: string) => {
     setSelectedSubworkIds(prev => {
       if (prev.includes(subworkId)) {
@@ -754,23 +762,29 @@ const [showQuarryChartModal, setShowQuarryChartModal] = useState(false);
     });
   };
 
-  const handleViewItems = () => {
-    if (selectedSubworkIds.length === 0) {
-      alert('Please select at least one subwork to view items');
-      return;
-    }
+ const handleViewItems = () => {
+  const validSelections = selectedSubworkIds.filter(id =>
+    subworks.some(sw => sw.subworks_id === id)
+  );
 
-    const firstSelected = subworks.find(
-      sw => sw.subworks_id === selectedSubworkIds[0]
-    );
-    if (firstSelected) {
-      setCurrentSubworkForItems({
-        id: firstSelected.subworks_id,
-        name: firstSelected.subworks_name
-      });
-    }
-    setShowItemsModal(true);
-  };
+  if (validSelections.length === 0) {
+    alert('Please select at least one subwork to view items');
+    return;
+  }
+
+  const firstSelected = subworks.find(
+    sw => sw.subworks_id === validSelections[0]
+  );
+
+  if (firstSelected) {
+    setCurrentSubworkForItems({
+      id: firstSelected.subworks_id,
+      name: firstSelected.subworks_name
+    });
+  }
+
+  setShowItemsModal(true);
+};
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('hi-IN', {

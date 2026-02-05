@@ -353,9 +353,6 @@ const WorkAssignments: React.FC = () => {
                         User
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
                         Role
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
@@ -370,7 +367,6 @@ const WorkAssignments: React.FC = () => {
                     {assignments.map(assignment => (
                       <tr key={assignment.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 text-sm text-gray-900">{assignment.user_name}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900">{assignment.user_email}</td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                             <Shield className="w-3 h-3 mr-1" />

@@ -199,96 +199,96 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
     setRateGroups(groups);
   };
 
-const handleMeasurementExcelUpload = async (
-  event: React.ChangeEvent<HTMLInputElement>
-) => {
-  const file = event.target.files?.[0];
-  if (!file || !currentItem || !user) return;
+  const handleMeasurementExcelUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentItem || !user) return;
 
-  try {
-    setUploadingExcel(true);
+    try {
+      setUploadingExcel(true);
 
-    const fileExt = file.name.split('.').pop();
-    const storedFileName = `${currentItem.sr_no}_${Date.now()}.${fileExt}`;
-    const filePath = `measurements/${storedFileName}`;
+      const fileExt = file.name.split('.').pop();
+      const storedFileName = `${currentItem.sr_no}_${Date.now()}.${fileExt}`;
+      const filePath = `measurements/${storedFileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('estimate-designs')
-      .upload(filePath, file);
+      const { error: uploadError } = await supabase.storage
+        .from('estimate-designs')
+        .upload(filePath, file);
 
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      throw new Error(`Failed to upload file: ${uploadError.message}`);
-    }
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      }
 
-    const { data } = supabase.storage
-      .from('estimate-designs')
-      .getPublicUrl(filePath);
+      const { data } = supabase.storage
+        .from('estimate-designs')
+        .getPublicUrl(filePath);
 
-    const publicUrl = data.publicUrl;
+      const publicUrl = data.publicUrl;
 
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet);
 
-    if (!rows.length) {
-      alert('Excel file is empty. Please add data to the Excel file.');
+      if (!rows.length) {
+        alert('Excel file is empty. Please add data to the Excel file.');
+        event.target.value = '';
+        return;
+      }
+
+      const nextSrNo = await getNextMeasurementSrNo();
+
+      const insertRows = rows.map((row, index) => {
+        const quantity = Number(row.Quantity || row.quantity || 0);
+        return {
+          subwork_item_id: currentItem.sr_no,
+          measurement_sr_no: nextSrNo + index,
+          description_of_items: row.Description || row.description || null,
+          unit: currentItem.ssr_unit,
+          factor: 1,
+          no_of_units: 1,
+          length: 1,
+          width_breadth: 1,
+          height_depth: 1,
+          is_manual_quantity: true,
+          manual_quantity: quantity,
+          calculated_quantity: quantity,
+          is_deduction: false,
+          rate: currentItem.ssr_rate || 0,
+          line_amount: quantity * (currentItem.ssr_rate || 0),
+          excel_url: publicUrl,
+          excel_name: file.name,
+          created_by: user.id,
+        };
+      });
+
+      const { error: insertError } = await supabase
+        .schema('estimate')
+        .from('item_measurements')
+        .insert(insertRows);
+
+      if (insertError) {
+        console.error('Database insert error:', insertError);
+        throw new Error(`Failed to save measurements: ${insertError.message}`);
+      }
+
+      await fetchData();
+      await updateItemSSRQuantity();
+
+      alert(`${rows.length} measurement(s) uploaded successfully from Excel!`);
+      setShowAddModal(false);
       event.target.value = '';
-      return;
+
+    } catch (error) {
+      console.error('Error uploading measurement Excel:', error);
+      alert(error.message || 'Error uploading measurement Excel. Please try again.');
+      event.target.value = '';
+    } finally {
+      setUploadingExcel(false);
     }
-
-    const nextSrNo = await getNextMeasurementSrNo();
-
-    const insertRows = rows.map((row, index) => {
-      const quantity = Number(row.Quantity || row.quantity || 0);
-      return {
-        subwork_item_id: currentItem.sr_no,
-        measurement_sr_no: nextSrNo + index,
-        description_of_items: row.Description || row.description || null,
-        unit: currentItem.ssr_unit,
-        factor: 1,
-        no_of_units: 1,
-        length: 1,
-        width_breadth: 1,
-        height_depth: 1,
-        is_manual_quantity: true,
-        manual_quantity: quantity,
-        calculated_quantity: quantity,
-        is_deduction: false,
-        rate: currentItem.ssr_rate || 0,
-        line_amount: quantity * (currentItem.ssr_rate || 0),
-        excel_url: publicUrl,
-        excel_name: file.name,
-        created_by: user.id,
-      };
-    });
-
-    const { error: insertError } = await supabase
-      .schema('estimate')
-      .from('item_measurements')
-      .insert(insertRows);
-
-    if (insertError) {
-      console.error('Database insert error:', insertError);
-      throw new Error(`Failed to save measurements: ${insertError.message}`);
-    }
-
-    await fetchData();
-    await updateItemSSRQuantity();
-
-    alert(`${rows.length} measurement(s) uploaded successfully from Excel!`);
-    setShowAddModal(false);
-    event.target.value = '';
-
-  } catch (error) {
-    console.error('Error uploading measurement Excel:', error);
-    alert(error.message || 'Error uploading measurement Excel. Please try again.');
-    event.target.value = '';
-  } finally {
-    setUploadingExcel(false);
-  }
-};
+  };
 
   const fetchData = async () => {
     try {
@@ -389,133 +389,124 @@ const handleMeasurementExcelUpload = async (
     }
   };
 
-  const getNextMeasurementSrNo = async (): Promise<number> => {
-    try {
-      const { data, error } = await supabase
-        .schema('estimate')
-        .from('item_measurements')
-        .select('measurement_sr_no')
-        .eq('subwork_item_id', currentItem.sr_no)
-        .order('measurement_sr_no', { ascending: false })
-        .limit(1);
+  const getNextMeasurementSrNoFromState = () => {
+    if (!measurements || measurements.length === 0) return 1;
 
-      if (error) throw error;
+    const lastSrNo = Math.max(
+      ...measurements.map(m => m.measurement_sr_no || 0)
+    );
 
-      return data && data.length > 0 ? data[0].measurement_sr_no + 1 : 1;
-    } catch (error) {
-      console.error('Error getting next measurement sr_no:', error);
-      return 1;
-    }
+    return lastSrNo + 1;
   };
 
- const handleAddMeasurement = async () => {debugger
-  if (!user) return;
+  const handleAddMeasurement = async () => {
+    if (!user) return;
 
-  // Validate that a rate is selected
-  if (!selectedDescription) {
-    alert('Please select a rate before adding measurement');
-    return;
-  }
-
-  try {
-    const nextSrNo = await getNextMeasurementSrNo();
-    const calculatedQuantity = calculateQuantity();
-
-    // Validate calculated quantity
-    if (calculatedQuantity === 0 || isNaN(calculatedQuantity)) {
-      alert('Please enter valid measurement values or manual quantity');
+    // Validate that a rate is selected
+    if (!selectedDescription) {
+      alert('Please select a rate before adding measurement');
       return;
     }
 
-    // Use the selected rate
-    const rate = selectedRate;
-    const lineAmount = calculatedQuantity * rate;
+    try {
+      const nextSrNo = getNextMeasurementSrNoFromState();
+      const calculatedQuantity = calculateQuantity();
 
-    // 🔹 Fetch subwork_item_id from item_rates using selected description
-    const { data: rateData, error: rateFetchError } = await supabase
-      .schema('estimate')
-      .from('item_rates')
-      .select('sr_no, subwork_item_sr_no, rate')
-      .eq('description', selectedDescription)
-      .eq('subwork_item_sr_no', currentItem.sr_no);     
-    
-    if (rateFetchError) throw rateFetchError;
+      // Validate calculated quantity
+      if (calculatedQuantity === 0 || isNaN(calculatedQuantity)) {
+        alert('Please enter valid measurement values or manual quantity');
+        return;
+      }
 
-    // ✅ FIX: Extract values from array
-    const mappedRate = rateData && rateData.length > 0 ? rateData[0] : null;
+      // Use the selected rate
+      const rate = selectedRate;
+      const lineAmount = calculatedQuantity * rate;
 
-    const subworkItemId = mappedRate?.subwork_item_sr_no;
-    const rateSrNo = mappedRate?.sr_no;
+      // 🔹 Fetch subwork_item_id from item_rates using selected description
+      const { data: rateData, error: rateFetchError } = await supabase
+        .schema('estimate')
+        .from('item_rates')
+        .select('sr_no, subwork_item_sr_no, rate')
+        .eq('description', selectedDescription)
+        .eq('subwork_item_sr_no', currentItem.sr_no);
 
-    const { error } = await supabase
-      .schema('estimate')
-      .from('item_measurements')
-      .insert([{
-        ...newMeasurement,
-        subwork_item_id: subworkItemId,
-        measurement_sr_no: nextSrNo,
-        factor: newMeasurement.factor || 1,
-        calculated_quantity: calculatedQuantity,
-        line_amount: mappedRate?.rate * calculatedQuantity,
-        unit: newMeasurement.unit || null,
-        is_deduction: newMeasurement.is_deduction || false,
-        is_manual_quantity: newMeasurement.is_manual_quantity || false,
-        manual_quantity: newMeasurement.is_manual_quantity ? (newMeasurement.manual_quantity || 0) : null,
-        selected_rate_id: newMeasurement.selected_rate_id || null,
-        rate_sr_no: rateSrNo
-      }]);
+      if (rateFetchError) throw rateFetchError;
 
-    if (error) throw error;
+      // ✅ FIX: Extract values from array
+      const mappedRate = rateData && rateData.length > 0 ? rateData[0] : null;
 
-    const { data: measurementsForRate, error: measurementsError } = await supabase
-      .schema('estimate')
-      .from('item_measurements')
-      .select('calculated_quantity')
-      .eq('rate_sr_no', rateSrNo);
+      const subworkItemId = mappedRate?.subwork_item_sr_no;
+      const rateSrNo = mappedRate?.sr_no;
 
-    if (measurementsError) throw measurementsError;
+      const { error } = await supabase
+        .schema('estimate')
+        .from('item_measurements')
+        .insert([{
+          ...newMeasurement,
+          subwork_item_id: subworkItemId,
+          measurement_sr_no: nextSrNo,
+          factor: newMeasurement.factor || 1,
+          calculated_quantity: calculatedQuantity,
+          line_amount: mappedRate?.rate * calculatedQuantity,
+          unit: newMeasurement.unit || null,
+          is_deduction: newMeasurement.is_deduction || false,
+          is_manual_quantity: newMeasurement.is_manual_quantity || false,
+          manual_quantity: newMeasurement.is_manual_quantity ? (newMeasurement.manual_quantity || 0) : null,
+          selected_rate_id: newMeasurement.selected_rate_id || null,
+          rate_sr_no: rateSrNo
+        }]);
 
-    const totalCalculatedQuantity =
-      measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+      if (error) throw error;
 
-    const fetchedRate = mappedRate?.rate;
-    const rateTotalAmount = totalCalculatedQuantity * fetchedRate;
+      const { data: measurementsForRate, error: measurementsError } = await supabase
+        .schema('estimate')
+        .from('item_measurements')
+        .select('calculated_quantity')
+        .eq('rate_sr_no', rateSrNo);
 
-    const { error: updateRateError } = await supabase
-      .schema('estimate')
-      .from('item_rates')
-      .update({
-        ssr_quantity: totalCalculatedQuantity,
-        rate_total_amount: rateTotalAmount
-      })
-      .eq('sr_no', rateSrNo);
+      if (measurementsError) throw measurementsError;
 
-    if (updateRateError) throw updateRateError;
+      const totalCalculatedQuantity =
+        measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
 
-    setShowAddModal(false);
-    setNewMeasurement({
-      factor: 1,
-      no_of_units: 0,
-      length: 0,
-      width_breadth: 0,
-      height_depth: 0,
-      selected_rate_id: 0
-    });
-    setSelectedRate(0);
-    setIsReferencing(false);
-    setSelectedReferenceItem(null);
+      const fetchedRate = mappedRate?.rate;
+      const rateTotalAmount = totalCalculatedQuantity * fetchedRate;
 
-    fetchData();
+      const { error: updateRateError } = await supabase
+        .schema('estimate')
+        .from('item_rates')
+        .update({
+          ssr_quantity: totalCalculatedQuantity,
+          rate_total_amount: rateTotalAmount
+        })
+        .eq('sr_no', rateSrNo);
 
-    setTimeout(async () => {
-      await updateItemSSRQuantity();
-    }, 100);
+      if (updateRateError) throw updateRateError;
 
-  } catch (error) {
-    console.error('Error adding measurement:', error);
-    alert(`Failed to add measurement: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
+      setShowAddModal(false);
+      setNewMeasurement({
+        factor: 1,
+        no_of_units: 0,
+        length: 0,
+        width_breadth: 0,
+        height_depth: 0,
+        selected_rate_id: 0
+      });
+      setSelectedRate(0);
+      setIsReferencing(false);
+      setSelectedReferenceItem(null);
+
+      fetchData();
+
+      setTimeout(async () => {
+        await updateItemSSRQuantity();
+      }, 100);
+
+    } catch (error) {
+      console.error('Error adding measurement:', error);
+      alert(`Failed to add measurement: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
 
   const copyLastMeasurement = () => {
@@ -765,19 +756,19 @@ const handleMeasurementExcelUpload = async (
       // If operation is 'none', clear final_quantity and related fields
       const updateData = itemOperation.operation_type === 'none'
         ? {
-            operation_type: null,
-            operation_value: null,
-            unit_conversion_factor: 1,
-            final_unit: null,
-            final_quantity: null
-          }
+          operation_type: null,
+          operation_value: null,
+          unit_conversion_factor: 1,
+          final_unit: null,
+          final_quantity: null
+        }
         : {
-            operation_type: itemOperation.operation_type,
-            operation_value: itemOperation.operation_value,
-            unit_conversion_factor: itemOperation.unit_conversion_factor || 1,
-            final_unit: itemOperation.final_unit || null,
-            final_quantity: finalQty
-          };
+          operation_type: itemOperation.operation_type,
+          operation_value: itemOperation.operation_value,
+          unit_conversion_factor: itemOperation.unit_conversion_factor || 1,
+          final_unit: itemOperation.final_unit || null,
+          final_quantity: finalQty
+        };
 
       // Update subwork_items
       const { error } = await supabase
@@ -849,6 +840,7 @@ const handleMeasurementExcelUpload = async (
       }
 
       alert('Final quantity calculation saved successfully!');
+      onClose();
     } catch (error) {
       console.error('Error saving item operations:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1326,8 +1318,8 @@ const handleMeasurementExcelUpload = async (
                                   <div className="flex justify-between items-center text-sm text-gray-600 border-t pt-2">
                                     <span>
                                       After {itemOperation.operation_type === 'multiply' ? 'multiply by' :
-                                            itemOperation.operation_type === 'divide' ? 'divide by' :
-                                            itemOperation.operation_type === 'add' ? 'add' : 'subtract'} {itemOperation.operation_value}:
+                                        itemOperation.operation_type === 'divide' ? 'divide by' :
+                                          itemOperation.operation_type === 'add' ? 'add' : 'subtract'} {itemOperation.operation_value}:
                                     </span>
                                     <span className="font-medium text-gray-900">
                                       {intermediateQty.toFixed(3)}
