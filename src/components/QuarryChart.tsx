@@ -3,6 +3,7 @@ import { Stage, Layer, Line, Circle, Rect, Text, Transformer, Arrow } from 'reac
 import Konva from 'konva';
 import jsPDF from 'jspdf';
 import { X } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface QuarryChartProps {
   isOpen: boolean;
@@ -342,8 +343,63 @@ const QuarryChart: React.FC<QuarryChartProps> = ({ isOpen, onClose, worksId }) =
     pdf.save(`quarry-chart-${worksId}.pdf`);
   };
 
-  const handleInternalClose = () => {
+  const saveQuarryChart = async () => {
+    try {
+      const shapesToSave = filteredShapes;
+      
+      // Check if chart already exists for this work
+      const { data: existing, error: fetchError } = await supabase
+        .schema('estimate')
+        .from('quarry_charts')
+        .select('id')
+        .eq('works_id', worksId)
+        .maybeSingle();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking existing chart:', fetchError);
+        return;
+      }
+
+      if (existing) {
+        // Update existing
+        const { error: updateError } = await supabase
+          .schema('estimate')
+          .from('quarry_charts')
+          .update({
+            title,
+            shapes: shapesToSave,
+            updated_at: new Date().toISOString()
+          })
+          .eq('works_id', worksId);
+
+        if (updateError) {
+          console.error('Error updating quarry chart:', updateError);
+        }
+      } else {
+        // Insert new
+        const { error: insertError } = await supabase
+          .schema('estimate')
+          .from('quarry_charts')
+          .insert([{
+            works_id: worksId,
+            title,
+            shapes: shapesToSave,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (insertError) {
+          console.error('Error saving quarry chart:', insertError);
+        }
+      }
+    } catch (error) {
+      console.error('Error in saveQuarryChart:', error);
+    }
+  };
+
+  const handleInternalClose = async () => {
     setIsDrawing(false);
+    // Save before closing
+    await saveQuarryChart();
     onClose();
   };
 

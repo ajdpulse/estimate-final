@@ -832,7 +832,7 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                   <div className="mb-8">
                     <div className="flex justify-between items-center mb-6 text-lg">
                       <span className="font-bold">Estimated Cost Rs.</span>
-                      <span className="font-bold">{calculateTotalEstimate().toLocaleString('hi-IN')}</span>
+                      <span className="font-bold">{(estimateData.work.total_estimated_cost || calculateTotalEstimate()).toLocaleString('hi-IN')}</span>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 text-sm">

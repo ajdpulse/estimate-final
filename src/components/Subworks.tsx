@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { Work, SubWork } from '../types';
 import LoadingSpinner from './common/LoadingSpinner';
 import SubworkItems from './SubworkItems';
@@ -99,6 +100,19 @@ const [showQuarryChartModal, setShowQuarryChartModal] = useState(false);
     fetchWorks();
   }, [selectedWorkId]);
 
+  // ✅ NEW: Refetch works when page becomes visible (background refresh)
+  useRefreshOnVisibility(
+    async () => {
+      try {
+        await supabase.auth.refreshSession();
+      } catch (e) {
+        console.warn('Session refresh failed on visibility (subworks):', e);
+      }
+      await fetchWorks(selectedWorkId, true);
+    },
+    [selectedWorkId]
+  );
+
   useEffect(() => {
     if (location.state?.selectedWorksId) {
       setSelectedWorkId(location.state.selectedWorksId);
@@ -125,9 +139,9 @@ const [showQuarryChartModal, setShowQuarryChartModal] = useState(false);
     }
   }, [subworks]);
 
-  const fetchWorks = async (selectedId = '') => {
+  const fetchWorks = async (selectedId = '', background = false) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
 
       const { data, error } = await supabase
         .schema('estimate')
@@ -150,7 +164,7 @@ const [showQuarryChartModal, setShowQuarryChartModal] = useState(false);
     } catch (error) {
       console.error('Error fetching works:', error);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

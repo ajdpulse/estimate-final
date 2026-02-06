@@ -8,6 +8,7 @@ import { Work, RecapCalculations, TaxEntry } from '../types';
 import WorksRecapSheet from './WorksRecapSheet';
 import EstimateApprovalActions from './EstimateApprovalActions';
 import WorkAssignments from './WorkAssignments';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { Plus, Search, Filter, CreditCard as Edit2, Trash2, Eye, FileText, IndianRupee, Calendar, Building } from 'lucide-react';
 
 const Works: React.FC = () => {
@@ -35,6 +36,12 @@ const Works: React.FC = () => {
   useEffect(() => {
     fetchWorks();
   }, []);
+
+  // ✅ NEW: Refetch works when page becomes visible
+  useRefreshOnVisibility(
+    () => fetchWorks(typeFilter),
+    [typeFilter]
+  );
 
   const handleUnitChange = (subworkId: string, value: string) => {
     const num = parseFloat(value) || 0;
@@ -69,54 +76,59 @@ const Works: React.FC = () => {
   }
 };
 
-  const handleAddWork = async () => {
-    if (!newWork.work_name || !user) return;
+const handleAddWork = async () => {
+  debugger;
+  if (!newWork.work_name || !user) return;
 
-    try {
-      const { data: insertedWork, error: workError } = await supabase
-        .schema('estimate')
-        .from('works')
-        .insert([{
-          ...newWork,
-          created_by: user.id
-        }])
-        .select()
-        .single();
+  try {
+    const { data: insertedWork, error: workError } = await supabase
+      .schema('estimate')
+      .from('works')
+      .insert([{
+        ...newWork,
+        created_by: user.id
+      }])
+      .select()
+      .single();
 
-      if (workError) throw workError;
+    if (workError) throw workError;
 
-      if (insertedWork?.works_id) {
-        const { data: userRole } = await supabase
-          .schema('public')
-          .from('user_roles')
-          .select('role_id, roles!inner(application)')
-          .eq('user_id', user.id)
-          .in('roles.application', ['estimate', 'mb', 'estimate,mb'])
-          .maybeSingle();
+    if (insertedWork?.works_id) {
+      const { data: userRole } = await supabase
+        .schema('public')
+        .from('user_roles')
+        .select('role_id, roles!inner(application)')
+        .eq('user_id', user.id)
+        .in('roles.application', ['estimate', 'mb', 'estimate,mb'])
+        .maybeSingle();
 
-        if (userRole?.role_id) {
-          await supabase
-            .schema('estimate')
-            .from('work_assignments')
-            .insert([{
-              work_id: insertedWork.works_id,
-              user_id: user.id,
-              role_id: userRole.role_id,
-              assigned_by: user.id
-            }]);
-        }
+      if (userRole?.role_id) {
+        await supabase
+          .schema('estimate')
+          .from('work_assignments')
+          .insert([{
+            work_id: insertedWork.works_id,
+            user_id: user.id,
+            role_id: userRole.role_id,
+            assigned_by: user.id
+          }]);
       }
-
-      setShowAddModal(false);
-      setNewWork({
-        type: 'Technical Sanction',
-        division: 'Z.P.(Works) Division, Chandrapur'
-      });
-      fetchWorks();
-    } catch (error) {
-      console.error('Error adding work:', error);
     }
-  };
+
+    setShowAddModal(false);
+
+    // ✅ keep selected type instead of forcing TS
+    setNewWork({
+      type: newWork.type || 'Technical Sanction',
+      division: 'Z.P.(Works) Division, Chandrapur'
+    });
+
+    fetchWorks();
+  } catch (error) {
+    console.error('Error adding work:', error);
+  }
+};
+
 
   const handleViewWork = (work: Work) => {
     setSelectedWork(work);
@@ -771,7 +783,7 @@ const Works: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.village')}
+                    Taluka
                   </label>
                   <input
                     type="text"
@@ -783,7 +795,7 @@ const Works: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.grampanchayat')}
+                    Grampanchayat
                   </label>
                   <input
                     type="text"
@@ -796,7 +808,7 @@ const Works: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.taluka')}
+                    Taluka
                   </label>
                   <select
                     value={newWork.taluka || ''}
@@ -1158,7 +1170,7 @@ const Works: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.village')}
+                   Village
                   </label>
                   <input
                     type="text"
@@ -1170,7 +1182,7 @@ const Works: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.grampanchayat')}
+                    Grampanchayat
                   </label>
                   <input
                     type="text"
@@ -1183,7 +1195,7 @@ const Works: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('addWork.taluka')}
+                    Taluka
                   </label>
                   <select
                     value={newWork.taluka || ''}

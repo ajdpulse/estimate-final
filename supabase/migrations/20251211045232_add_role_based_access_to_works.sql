@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS estimate.works (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   
-  CONSTRAINT valid_type CHECK (type IN ('Technical Sanction', 'Administrative Approval','Technical Approval')),
+  CONSTRAINT valid_type CHECK (type IN ('Technical Sanction','Technical Approval')),
   CONSTRAINT valid_status CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'in_progress', 'completed'))
 );
 

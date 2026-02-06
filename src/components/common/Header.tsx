@@ -23,20 +23,23 @@ const Header: React.FC = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/login');
+      window.location.href = '/login';
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
+  const handleNavigation = (path: string) => {
+    window.location.href = path;
+  };
+
   return (
     <header className="bg-gradient-to-r from-slate-50 to-gray-100 shadow-xl border-b border-slate-200">
-      {/* Top Bar - Logo, Title, Profile, Language */}
+      {/* Top Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-12">
-          {/* Logo and Title */}
           <button
-            onClick={() => navigate('/')}
+            onClick={() => handleNavigation('/')}
             className="flex items-center space-x-4 hover:opacity-80 transition-opacity cursor-pointer"
           >
             <div className="flex-shrink-0">
@@ -45,16 +48,14 @@ const Header: React.FC = () => {
               </div>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-wide" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+              <h1 className="text-xl font-bold text-gray-900 tracking-wide">
                 E-Estimate
               </h1>
               <p className="text-xs text-gray-500">ZP Chandrapur</p>
             </div>
           </button>
 
-          {/* User Actions */}
           <div className="flex items-center space-x-4">
-            {/* User Menu */}
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
                 <User className="w-5 h-5 text-gray-400" />
@@ -62,10 +63,10 @@ const Header: React.FC = () => {
                   {user?.user_metadata?.full_name || user?.email}
                 </span>
               </div>
-              
+
               <button
                 onClick={handleSignOut}
-                className="flex items-center space-x-1 px-3 py-2 rounded-xl text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-300"
+                className="flex items-center space-x-1 px-3 py-2 rounded-xl text-sm font-medium text-gray-600 hover:text-red-600"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="hidden sm:inline">{t('nav.signOut')}</span>
@@ -75,7 +76,7 @@ const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Bar */}
+      {/* Desktop Navigation */}
       <div className="border-t border-slate-200 bg-gradient-to-r from-slate-100 to-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-2 py-2">
@@ -84,7 +85,7 @@ const Header: React.FC = () => {
               return (
                 <button
                   key={item.key}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => handleNavigation(item.path)}
                   className={`px-6 py-3 rounded-xl text-base font-bold transition-all duration-300 flex items-center space-x-2 ${
                     location.pathname === item.path
                       ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg scale-105`
@@ -108,7 +109,7 @@ const Header: React.FC = () => {
             return (
               <button
                 key={item.key}
-                onClick={() => navigate(item.path)}
+                onClick={() => handleNavigation(item.path)}
                 className={`block w-full text-left px-6 py-3 rounded-xl text-base font-bold transition-all duration-300 flex items-center space-x-2 ${
                   location.pathname === item.path
                     ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg`

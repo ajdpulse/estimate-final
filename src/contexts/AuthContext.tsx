@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, AuthContextType } from '../types';
 import { initializeAuthReceiver } from '../utils/authReceiver'; // ✅ ADD
+import { usePageVisibility } from '../hooks/usePageVisibility'; // ✅ ADD for tab visibility
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -68,6 +69,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       hasFullAccess
     } as User);
   };
+
+  // ✅ NEW: Handle page visibility to refresh session when tab becomes active
+  const handlePageVisible = async () => {
+    console.log('Page became visible, refreshing session...');
+    try {
+      // Refresh the session to ensure tokens are still valid
+      const { data: { session }, error } = await supabase.auth.refreshSession();
+
+      if (error) {
+        console.error('Session refresh failed:', error);
+        // If refresh fails, try to get current session
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.user) {
+          await setUserWithRole(currentSession.user);
+        }
+        return;
+      }
+
+      if (session?.user) {
+        await setUserWithRole(session.user);
+      }
+    } catch (error) {
+      console.error('Error refreshing session on page visibility:', error);
+    }
+  };
+
+  // ✅ NEW: Use page visibility hook to refresh session
+  usePageVisibility(
+    handlePageVisible, // onVisible callback
+    undefined, // onHidden callback
+    true // enabled
+  );
 
   useEffect(() => {
     let subscription: any;

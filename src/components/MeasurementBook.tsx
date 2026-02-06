@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { Work, SubWork } from '../types';
 import LoadingSpinner from './common/LoadingSpinner';
 import { BookOpen, Search, Filter, Calculator, FileText, IndianRupee, Building, Plus, Ruler, CheckCircle, AlertCircle, Clock, X, ChevronDown, ChevronRight, CreditCard as Edit2 } from 'lucide-react';
@@ -117,6 +118,18 @@ const MeasurementBook = () => {
             setMeasurementBookData({});
         }
     }, [selectedWorkId]);
+
+    // ✅ NEW: Refetch measurement book data when page becomes visible
+    useRefreshOnVisibility(
+        async () => {
+            if (selectedWorkId) {
+                await fetchSubworks(selectedWorkId);
+                await fetchItemRates(selectedWorkId);
+                await fetchMeasurementBookData(selectedWorkId);
+            }
+        },
+        [selectedWorkId]
+    );
 
     const fetchWorks = async () => {
         try {

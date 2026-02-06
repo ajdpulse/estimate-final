@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import LoadingSpinner from './common/LoadingSpinner';
 import { CheckCircle, XCircle, RotateCcw, Send, Clock, FileCheck, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -49,6 +50,20 @@ const ApprovalDashboard: React.FC = () => {
     checkPermissions();
   }, [user]);
 
+  // ✅ NEW: Refetch approvals when page becomes visible (background)
+  useRefreshOnVisibility(
+    async () => {
+      try {
+        await supabase.auth.refreshSession();
+      } catch (e) {
+        console.warn('Session refresh failed on visibility (approvals):', e);
+      }
+      await fetchApprovals(true);
+      await checkPermissions();
+    },
+    [user]
+  );
+
   const checkPermissions = async () => {
     if (!user) return;
 
@@ -65,11 +80,11 @@ const ApprovalDashboard: React.FC = () => {
     }
   };
 
-  const fetchApprovals = async () => {
+  const fetchApprovals = async (background = false) => {
     if (!user) return;
 
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
 
       // Check if user has admin access
       const { data: userRole } = await supabase
@@ -138,7 +153,7 @@ const ApprovalDashboard: React.FC = () => {
       console.error('Error fetching approvals:', error);
       alert('Failed to load approvals');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

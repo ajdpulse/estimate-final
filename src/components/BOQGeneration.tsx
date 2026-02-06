@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { FileText, Plus, Trash2, Save, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -49,11 +50,24 @@ const BOQGeneration: React.FC = () => {
     fetchApprovedWorks();
   }, [user]);
 
-  const fetchApprovedWorks = async () => {
+  // ✅ NEW: Refetch works when page becomes visible (background)
+  useRefreshOnVisibility(
+    async () => {
+      try {
+        await supabase.auth.refreshSession();
+      } catch (e) {
+        console.warn('Session refresh failed on visibility (boq):', e);
+      }
+      await fetchApprovedWorks(true);
+    },
+    [user]
+  );
+
+  const fetchApprovedWorks = async (background = false) => {
     if (!user) return;
 
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const { data, error } = await supabase
         .schema('estimate')
         .from('works')
@@ -67,7 +81,7 @@ const BOQGeneration: React.FC = () => {
       console.error('Error fetching works:', error);
       alert('Failed to load approved works');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

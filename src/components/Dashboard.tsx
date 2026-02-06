@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { EstimateWork } from '../types';
 import LoadingSpinner from './common/LoadingSpinner';
 import {
@@ -32,9 +33,23 @@ const Dashboard: React.FC = () => {
     fetchDashboardData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  // ✅ NEW: Refetch dashboard data when page becomes visible
+  useRefreshOnVisibility(
+    async () => {
+      try {
+        // attempt to refresh auth session before fetching data
+        await supabase.auth.refreshSession();
+      } catch (e) {
+        console.warn('Session refresh failed on visibility (dashboard):', e);
+      }
+      await fetchDashboardData(true);
+    },
+    []
+  );
+
+  const fetchDashboardData = async (background = false) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
 
       // Fetch works (RLS will filter based on assignments automatically)
       const { data: works } = await supabase
@@ -126,7 +141,7 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

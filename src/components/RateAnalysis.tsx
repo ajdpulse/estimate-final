@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 // removed unused useLocation
 import { supabase } from '../lib/supabase';
+import { useRefreshOnVisibility } from '../hooks/useRefreshOnVisibility'; // ✅ ADD
 import { SubworkItem, ItemMeasurement, ItemLead, ItemMaterial, ItemRate } from '../types';
 import {
   Plus,
@@ -157,6 +158,16 @@ const RateAnalysis: React.FC<RateAnalysisProps> = ({ isOpen, onClose, item, base
       fetchItemRates();
     }
   }, [isOpen, item?.sr_no, activeTab]);
+
+  // ✅ NEW: Refetch rate analysis data when page becomes visible (only when modal is open)
+  useRefreshOnVisibility(
+    async () => {
+      await fetchData();
+      await fetchItemRates();
+    },
+    [item?.sr_no, activeTab],
+    isOpen // Only enabled when modal is open
+  );
 
   useEffect(() => {
     if (itemRates.length > 0 && !selectedRateId) {
