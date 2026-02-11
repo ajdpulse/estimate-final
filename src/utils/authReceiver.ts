@@ -13,7 +13,7 @@ interface AuthTransferData {
   timestamp: number;
 }
 
-export const handleAutoLogin = async (appName: string = 'estimate'): Promise<boolean> => {debugger;
+export const handleAutoLogin = async (appName: string = 'estimate'): Promise<boolean> => {
   try {
     // console.log(`🔍 ${appName.toUpperCase()}: Checking for auto-login data...`);
     

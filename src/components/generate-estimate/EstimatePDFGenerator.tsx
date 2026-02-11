@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect  } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import {
@@ -147,7 +147,7 @@ export const EstimatePDFGenerator: React.FC<EstimatePDFGeneratorProps> = ({
 
   const printRef = useRef<HTMLDivElement | null>(null);
 
-   const [photosMap, setPhotosMap] = useState<Record<string, Photo[]>>({}); 
+  const [photosMap, setPhotosMap] = useState<Record<string, Photo[]>>({});
   const [loadingPhotos, setLoadingPhotos] = useState(false);
 
   const [documentSettings, setDocumentSettings] = useState<DocumentSettings>({
@@ -436,7 +436,7 @@ export const EstimatePDFGenerator: React.FC<EstimatePDFGeneratorProps> = ({
     }
   };
 
-const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
+  const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
     try {
       const { data, error } = await supabase
         .schema('estimate')
@@ -465,14 +465,14 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
           return { subworkId: subwork.subworks_id, photos };
         })
       )
-      .then((results) => {
-        const photoMap: Record<string, Photo[]> = {};
-        results.forEach(({ subworkId, photos }) => {
-          photoMap[subworkId] = photos;
-        });
-        setPhotosMap(photoMap);
-      })
-      .finally(() => setLoadingPhotos(false));
+        .then((results) => {
+          const photoMap: Record<string, Photo[]> = {};
+          results.forEach(({ subworkId, photos }) => {
+            photoMap[subworkId] = photos;
+          });
+          setPhotosMap(photoMap);
+        })
+        .finally(() => setLoadingPhotos(false));
     }
   }, [estimateData]);
 
@@ -897,7 +897,7 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                 <PageFooter pageNumber={3} />
               </div>
 
-            {/* Sub-work Detail Pages: Abstract -> Measurement(s) -> Photos (per subwork) */}
+              {/* Sub-work Detail Pages: Abstract -> Measurement(s) -> Photos (per subwork) */}
               {(() => {
                 // pageNumber used for measurement/photo pages; start after cover/details/recap pages
                 let pageNumber = 4;
@@ -956,15 +956,24 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                 const isRoyalty = item.category === 'royalty';
                                 const isTesting = item.category === 'testing';
 
-                                const royaltyData = isRoyalty && estimateData.subworkTotals ?
-                                  Object.values(estimateData.royaltyMeasurements[item.sr_no] || []).reduce((acc, rm) => ({
-                                    hb_metal: acc.hb_metal + (parseFloat(rm.hb_metal as any) || 0),
-                                    murum: acc.murum + (parseFloat(rm.murum as any) || 0),
-                                    sand: acc.sand + (parseFloat(rm.sand as any) || 0)
-                                  }), { hb_metal: 0, murum: 0, sand: 0 }) : null;
+                                const royaltyArr =
+                                  estimateData.royaltyMeasurements[item.sr_no] || [];
 
-                                const testingData = isTesting && estimateData.testingMeasurements ?
-                                  estimateData.testingMeasurements[item.sr_no] || [] : [];
+                                const royaltyData = isRoyalty && royaltyArr.length > 0
+                                  ? royaltyArr.reduce(
+                                    (acc, rm) => ({
+                                      hb_metal: acc.hb_metal + Number(rm.hb_metal || 0),
+                                      murum: acc.murum + Number(rm.murum || 0),
+                                      sand: acc.sand + Number(rm.sand || 0),
+                                    }),
+                                    { hb_metal: 0, murum: 0, sand: 0 }
+                                  )
+                                  : null;
+
+                                // Get testing measurements for this item
+                                const testingData = isTesting && estimateData.testingMeasurements
+                                  ? estimateData.testingMeasurements[item.sr_no] || []
+                                  : [];
 
                                 return (
                                   <tr key={item.sr_no || index}>
@@ -975,21 +984,36 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                       <div>{item.description_of_item}</div>
                                       {showMultiRates && (
                                         <div className="mt-1 space-y-1">
-                                          {rates.map((rate, i) => (
-                                            <div key={i} className="text-xs bg-gray-50 p-2 rounded border-l-2 border-blue-200 mt-1">
-                                              <div className="font-medium text-gray-700">{rate.description}</div>
-                                              <div className="flex items-center justify-between mt-1">
-                                                <span className="text-gray-600">
-                                                  ₹{rate.rate !== undefined && rate.rate !== null
-                                                    ? Number(rate.rate).toLocaleString("hi-IN", { maximumFractionDigits: 2 })
-                                                    : 0}
-                                                </span>
-                                                {rate.ssr_unit && (
-                                                  <span className="text-gray-500">per {rate.ssr_unit}</span>
-                                                )}
+                                          {rates.map((rate, i) => {
+                                            const baseRate = Number(rate.rate || 0);
+                                            const adjustedRate =
+                                              Math.round(baseRate / 0.05) * 0.05;
+
+                                            return (
+                                              <div
+                                                key={i}
+                                                className="text-xs bg-gray-50 p-2 rounded border-l-2 border-blue-200 mt-1"
+                                              >
+                                                <div className="font-medium text-gray-700">
+                                                  {rate.description}
+                                                </div>
+
+                                                <div className="flex items-center justify-between mt-1">
+                                                  <span className="text-gray-600">
+                                                    ₹{adjustedRate.toLocaleString("hi-IN", {
+                                                      maximumFractionDigits: 2,
+                                                    })}
+                                                  </span>
+
+                                                  {rate.ssr_unit && (
+                                                    <span className="text-gray-500">
+                                                      per {rate.ssr_unit}
+                                                    </span>
+                                                  )}
+                                                </div>
                                               </div>
-                                            </div>
-                                          ))}
+                                            );
+                                          })}
                                         </div>
                                       )}
                                     </td>
@@ -1001,14 +1025,28 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                         <div className="space-y-1">
                                           {rates.map((rate, i) => {
                                             let quantity = rate.ssr_quantity || 0;
+
+                                            // For royalty items, calculate quantity based on material type
                                             if (isRoyalty && royaltyData) {
                                               const rateDesc = (rate.description || '').toLowerCase();
-                                              if (rateDesc.includes('metal')) quantity = royaltyData.hb_metal;
-                                              else if (rateDesc.includes('murum')) quantity = royaltyData.murum;
-                                              else if (rateDesc.includes('sand')) quantity = royaltyData.sand;
-                                            } else if (isTesting && testingData.length > 0) {
-                                              quantity = testingData[0].required_tests || 0;
+
+                                              if (rateDesc.includes('metal')) {
+                                                quantity = royaltyData.hb_metal;
+                                              } else if (rateDesc.includes('murum')) {
+                                                quantity = royaltyData.murum;
+                                              } else if (rateDesc.includes('sand')) {
+                                                quantity = royaltyData.sand;
+                                              } else {
+                                                // If description doesn't match, use total
+                                                quantity = royaltyData.hb_metal + royaltyData.murum + royaltyData.sand;
+                                              }
                                             }
+
+                                            // For testing items, use testing quantity
+                                            if (isTesting && testingData.length > 0) {
+                                              quantity = testingData.reduce((sum, t) => sum + (t.required_tests || 0), 0);
+                                            }
+
                                             return (
                                               <div key={i} className="bg-gray-50 px-2 py-1 rounded text-xs">
                                                 {Number(quantity).toLocaleString("hi-IN", { maximumFractionDigits: 3 })}
@@ -1038,18 +1076,30 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                     <td className="border border-black p-2 align-top text-right">
                                       {showMultiRates ? (
                                         <div className="space-y-1">
-                                          {rates.map((rate, i) => (
-                                            <div key={i} className="bg-gray-50 px-2 py-1 rounded text-xs">
-                                              {rate.rate !== null && rate.rate !== undefined
-                                                ? Number(rate.rate).toLocaleString("hi-IN", { maximumFractionDigits: 2 })
-                                                : 0}
-                                            </div>
-                                          ))}
+                                          {rates.map((rate, i) => {
+                                            const baseRate = Number(rate.rate || 0);
+                                            const adjustedRate =
+                                              Math.round(baseRate / 0.05) * 0.05;
+
+                                            return (
+                                              <div key={i} className="bg-gray-50 px-2 py-1 rounded text-xs">
+                                                {adjustedRate.toLocaleString("hi-IN", {
+                                                  maximumFractionDigits: 3,
+                                                })}
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       ) : (
-                                        item.ssr_rate !== null && item.ssr_rate !== undefined
-                                          ? Number(item.ssr_rate).toLocaleString("hi-IN", { maximumFractionDigits: 2 })
-                                          : 0
+                                        (() => {
+                                          const baseRate = Number(item.ssr_rate || 0);
+                                          const adjustedRate =
+                                            Math.round(baseRate / 0.05) * 0.05;
+
+                                          return adjustedRate.toLocaleString("hi-IN", {
+                                            maximumFractionDigits: 3,
+                                          });
+                                        })()
                                       )}
                                     </td>
                                     <td className="border border-black p-2 align-top text-right">
@@ -1057,14 +1107,28 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                         <div className="space-y-1">
                                           {rates.map((rate, i) => {
                                             let quantity = rate.ssr_quantity || 0;
+
+                                            // For royalty items, calculate quantity based on material type
                                             if (isRoyalty && royaltyData) {
                                               const rateDesc = (rate.description || '').toLowerCase();
-                                              if (rateDesc.includes('metal')) quantity = royaltyData.hb_metal;
-                                              else if (rateDesc.includes('murum')) quantity = royaltyData.murum;
-                                              else if (rateDesc.includes('sand')) quantity = royaltyData.sand;
-                                            } else if (isTesting && testingData.length > 0) {
-                                              quantity = testingData[0].required_tests || 0;
+
+                                              if (rateDesc.includes('metal')) {
+                                                quantity = royaltyData.hb_metal;
+                                              } else if (rateDesc.includes('murum')) {
+                                                quantity = royaltyData.murum;
+                                              } else if (rateDesc.includes('sand')) {
+                                                quantity = royaltyData.sand;
+                                              } else {
+                                                // If description doesn't match, use total
+                                                quantity = royaltyData.hb_metal + royaltyData.murum + royaltyData.sand;
+                                              }
                                             }
+
+                                            // For testing items, use testing quantity
+                                            if (isTesting && testingData.length > 0) {
+                                              quantity = testingData.reduce((sum, t) => sum + (t.required_tests || 0), 0);
+                                            }
+
                                             const amount = quantity * Number(rate.rate || 0);
                                             return (
                                               <div key={i} className="bg-gray-50 px-2 py-1 rounded text-xs">
@@ -1098,16 +1162,45 @@ const fetchDesignPhotos = async (subworkId: string): Promise<Photo[]> => {
                                   {items
                                     .reduce((sum, item) => {
                                       const rates = item.rates || [];
+                                      const isRoyalty = item.category === 'royalty';
+                                      const isTesting = item.category === 'testing';
+
+                                      const royaltyData = isRoyalty ?
+                                        Object.values(estimateData.royaltyMeasurements[item.sr_no] || []).reduce((acc, rm) => ({
+                                          hb_metal: acc.hb_metal + (parseFloat(rm.hb_metal as any) || 0),
+                                          murum: acc.murum + (parseFloat(rm.murum as any) || 0),
+                                          sand: acc.sand + (parseFloat(rm.sand as any) || 0)
+                                        }), { hb_metal: 0, murum: 0, sand: 0 }) : null;
+
+                                      const testingData = isTesting && estimateData.testingMeasurements ?
+                                        estimateData.testingMeasurements[item.sr_no] || [] : [];
+
                                       const itemTotal = rates.length > 0
-                                        ? rates.reduce(
-                                          (rSum, rate) =>
-                                            rSum +
-                                            ((rate.ssr_quantity && rate.rate)
-                                              ? Number(rate.ssr_quantity) * Number(rate.rate)
-                                              : 0
-                                            ),
-                                          0
-                                        )
+                                        ? rates.reduce((rSum, rate) => {
+                                          let quantity = rate.ssr_quantity || 0;
+
+                                          // For royalty items, calculate quantity based on material type
+                                          if (isRoyalty && royaltyData) {
+                                            const rateDesc = (rate.description || '').toLowerCase();
+
+                                            if (rateDesc.includes('metal')) {
+                                              quantity = royaltyData.hb_metal;
+                                            } else if (rateDesc.includes('murum')) {
+                                              quantity = royaltyData.murum;
+                                            } else if (rateDesc.includes('sand')) {
+                                              quantity = royaltyData.sand;
+                                            } else {
+                                              quantity = royaltyData.hb_metal + royaltyData.murum + royaltyData.sand;
+                                            }
+                                          }
+
+                                          // For testing items
+                                          if (isTesting && testingData.length > 0) {
+                                            quantity = testingData.reduce((sum, t) => sum + (t.required_tests || 0), 0);
+                                          }
+
+                                          return rSum + ((quantity && rate.rate) ? Number(quantity) * Number(rate.rate) : 0);
+                                        }, 0)
                                         : (item.total_item_amount !== null && item.total_item_amount !== undefined
                                           ? Number(item.total_item_amount)
                                           : 0);

@@ -913,96 +913,133 @@ const SubworkItems: React.FC<SubworkItemsProps> = ({
     }
   };
 
-  const handleRoyaltyClick = async (item: SubworkItem) => {
-    try {
-      if (!item.sr_no) return;
+const handleRoyaltyClick = async (item: SubworkItem) => {
+  try {
+    if (!item.sr_no) return;
 
-      // Get subwork sr_no
-      const { data: subworkData } = await supabase
-        .schema('estimate')
-        .from('subworks')
-        .select('sr_no')
-        .eq('subworks_id', subworkId)
-        .maybeSingle();
+    // Get subwork sr_no
+    const { data: subworkData } = await supabase
+      .schema('estimate')
+      .from('subworks')
+      .select('sr_no')
+      .eq('subworks_id', subworkId)
+      .maybeSingle();
 
-      if (!subworkData) {
-        console.error('Subwork not found');
-        return;
-      }
+    if (!subworkData) {
+      console.error('Subwork not found');
+      return;
+    }
 
-      // Get measurements for this item
-      const { data: measurements } = await supabase
-        .schema('estimate')
-        .from('item_measurements')
-        .select('calculated_quantity')
-        .eq('subwork_item_id', item.sr_no);
+    // Get measurements for this item
+    const { data: measurements } = await supabase
+      .schema('estimate')
+      .from('item_measurements')
+      .select('calculated_quantity')
+      .eq('subwork_item_id', item.sr_no);
 
-      // Calculate total measurement
-      const totalMeasurement = measurements?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+    const totalMeasurement =
+      measurements?.reduce(
+        (sum, m) => sum + (m.calculated_quantity || 0),
+        0
+      ) || 0;
 
-      // Get rate analysis to extract factors
-      const { data: analysis } = await supabase
-        .schema('estimate')
-        .from('item_rate_analysis')
-        .select('entries, factor')
-        .eq('subwork_item_id', item.sr_no)
-        .maybeSingle();
+    // Get rate analysis factors
+    const { data: analysis } = await supabase
+      .schema('estimate')
+      .from('item_rate_analysis')
+      .select('entries')
+      .eq('subwork_item_id', item.sr_no)
+      .maybeSingle();
 
-      // Extract factors from rate analysis entries based on material type
-      let metalFactor = 0;
-      let murumFactor = 0;
-      let sandFactor = 0;
+    let metalFactor = 0;
+    let murumFactor = 0;
+    let sandFactor = 0;
 
-      if (analysis && analysis.entries && Array.isArray(analysis.entries)) {
-        analysis.entries.forEach((entry: any) => {
-          const label = entry.label?.toLowerCase() || '';
-          const factor = entry.factor || 0;
+    if (analysis?.entries) {
+      analysis.entries.forEach((entry: any) => {
+        const label = entry.label?.toLowerCase() || '';
+        const factor = entry.factor || 0;
 
-          if (label.includes('metal') || label.includes('murum') || label.includes('murrum')) {
-            if (label.includes('metal')) {
-              metalFactor = factor;
-            }
-            if (label.includes('murum') || label.includes('murrum')) {
-              murumFactor = factor;
-            }
-          }
-          if (label.includes('sand')) {
-            sandFactor = factor;
-          }
-        });
-      }
+        if (label.includes('metal')) metalFactor = factor;
+        if (label.includes('murum') || label.includes('murrum'))
+          murumFactor = factor;
+        if (label.includes('sand')) sandFactor = factor;
+      });
+    }
 
-      // Check if royalty measurement already exists
-      const { data: existing } = await supabase
+    // Insert measurement if not exists
+    const { data: existing } = await supabase
+      .schema('estimate')
+      .from('royalty_measurements')
+      .select('sr_no')
+      .eq('subwork_item_id', item.sr_no)
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase
         .schema('estimate')
         .from('royalty_measurements')
-        .select('sr_no')
-        .eq('subwork_item_id', item.sr_no)
-        .maybeSingle();
+        .insert({
+          works_id: worksId,
+          subwork_id: subworkData.sr_no,
+          subwork_item_id: item.sr_no,
+          measurement: totalMeasurement,
+          metal_factor: metalFactor,
+          murum_factor: murumFactor,
+          sand_factor: sandFactor,
+          created_by: user?.id
+        });
+    }
 
-      // If doesn't exist, create it with factors from rate analysis
-      if (!existing) {
+    // ---------- UPDATE item_rates.ssr_quantity ----------
+    const royaltyData =
+      royaltyMeasurementsMap[item.sr_no.toString()] || {
+        hb_metal: 0,
+        murum: 0,
+        sand: 0
+      };
+
+    const totalRoyaltyQty =
+      royaltyData.hb_metal +
+      royaltyData.murum +
+      royaltyData.sand;
+
+    // Fetch rates for item
+    const { data: rates } = await supabase
+      .schema('estimate')
+      .from('item_rates')
+      .select('sr_no, description, rate')
+      .eq('subwork_item_sr_no', item.sr_no);
+
+    if (rates && rates.length > 0) {
+      for (const rate of rates) {
+        const desc = (rate.description || '').toLowerCase();
+
+        let qty = totalRoyaltyQty;
+
+        if (desc.includes('metal')) qty = royaltyData.hb_metal;
+        else if (desc.includes('murum')) qty = royaltyData.murum;
+        else if (desc.includes('sand')) qty = royaltyData.sand;
+
         await supabase
           .schema('estimate')
-          .from('royalty_measurements')
-          .insert({
-            works_id: worksId,
-            subwork_id: subworkData.sr_no,
-            subwork_item_id: item.sr_no,
-            measurement: totalMeasurement,
-            metal_factor: metalFactor,
-            murum_factor: murumFactor,
-            sand_factor: sandFactor,
-            created_by: user?.id
-          });
+          .from('item_rates')
+          .update({
+            ssr_quantity: Number(qty.toFixed(3)),
+            rate_total_amount:
+              Number(qty.toFixed(3)) * Number(rate.rate || 0)
+          })
+          .eq('sr_no', rate.sr_no);
       }
-
-      // Open the royalty measurements modal
-      setShowRoyaltyMeasurementsModal(true);
-    } catch (error) {
-      console.error('Error handling royalty click:', error);
     }
-  };
+
+    // Open modal
+    setShowRoyaltyMeasurementsModal(true);
+  } catch (error) {
+    console.error('Error handling royalty click:', error);
+  }
+};
+
 
   const handleTestingClick = async (item: SubworkItem) => {
     try {

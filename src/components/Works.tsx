@@ -37,9 +37,9 @@ const Works: React.FC = () => {
     fetchWorks();
   }, []);
 
-  // ✅ NEW: Refetch works when page becomes visible
+  // ✅ NEW: Refetch works when page becomes visible (background refresh - no loading spinner)
   useRefreshOnVisibility(
-    () => fetchWorks(typeFilter),
+    () => fetchWorks(typeFilter, true),
     [typeFilter]
   );
 
@@ -49,9 +49,10 @@ const Works: React.FC = () => {
     setSaved(false);
   };
 
-  const fetchWorks = async (filterType = 'all') => {
+  // ✅ background flag: if true, don't show loading spinner (for visibility-triggered refreshes)
+  const fetchWorks = async (filterType = 'all', background = false) => {
   try {
-    setLoading(true);
+    if (!background) setLoading(true);
 
     // Base query
     let query = supabase
@@ -72,12 +73,11 @@ const Works: React.FC = () => {
   } catch (error) {
     console.error('Error fetching works:', error);
   } finally {
-    setLoading(false);
+    if (!background) setLoading(false);
   }
 };
 
 const handleAddWork = async () => {
-  debugger;
   if (!newWork.work_name || !user) return;
 
   try {

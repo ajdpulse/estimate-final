@@ -199,6 +199,29 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
     setRateGroups(groups);
   };
 
+  // Safely refresh session with timeout to avoid hanging awaits after tab change
+  const refreshSessionSafely = async (timeout = 3000) => {
+    try {
+      const refreshPromise = supabase.auth.refreshSession();
+      const result = await Promise.race([
+        refreshPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('session-refresh-timeout')), timeout))
+      ]);
+      return result;
+    } catch (e) {
+      console.warn('Session refresh failed or timed out:', e);
+      return null;
+    }
+  };
+
+  // Helper to race any promise (eg. Supabase queries) with a timeout to avoid indefinite hangs
+  const withTimeout = async (promise: Promise<any>, ms = 7000) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('supabase-timeout')), ms))
+    ]);
+  };
+
   const handleMeasurementExcelUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -408,7 +431,10 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
       return;
     }
 
-    try {
+      try {
+        // 🔄 Refresh session before operations (best-effort, with timeout)
+        await refreshSessionSafely(3000);
+
       const nextSrNo = getNextMeasurementSrNoFromState();
       const calculatedQuantity = calculateQuantity();
 
@@ -423,17 +449,33 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
       const lineAmount = calculatedQuantity * rate;
 
       // 🔹 Fetch subwork_item_id from item_rates using selected description
-      const { data: rateData, error: rateFetchError } = await supabase
-        .schema('estimate')
-        .from('item_rates')
-        .select('sr_no, subwork_item_sr_no, rate')
-        .eq('description', selectedDescription)
-        .eq('subwork_item_sr_no', currentItem.sr_no);
+      let mappedRate = null;
+      try {
+        const rateResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_rates')
+            .select('sr_no, subwork_item_sr_no, rate')
+            .eq('description', selectedDescription)
+            .eq('subwork_item_sr_no', currentItem.sr_no),
+          7000
+        );
 
-      if (rateFetchError) throw rateFetchError;
+        const { data: rateData, error: rateFetchError } = rateResp || {};
+        if (rateFetchError) {
+          console.error('Rate fetch error:', rateFetchError);
+          throw new Error(`Failed to fetch rate data: ${rateFetchError.message}`);
+        }
 
-      // ✅ FIX: Extract values from array
-      const mappedRate = rateData && rateData.length > 0 ? rateData[0] : null;
+        mappedRate = rateData && rateData.length > 0 ? rateData[0] : null;
+      } catch (err) {
+        console.error('Rate fetch timeout or error:', err);
+        throw new Error('Failed to fetch rate data (timeout or network issue)');
+      }
+
+      if (!mappedRate) {
+        throw new Error('No matching rate found for this description and item');
+      }
 
       const subworkItemId = mappedRate?.subwork_item_sr_no;
       const rateSrNo = mappedRate?.sr_no;
@@ -456,33 +498,62 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
           rate_sr_no: rateSrNo
         }]);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert measurement error:', error);
+        throw new Error(`Failed to insert measurement: ${error.message}`);
+      }
 
-      const { data: measurementsForRate, error: measurementsError } = await supabase
-        .schema('estimate')
-        .from('item_measurements')
-        .select('calculated_quantity')
-        .eq('rate_sr_no', rateSrNo);
+      let totalCalculatedQuantity = 0;
+      try {
+        const measResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_measurements')
+            .select('calculated_quantity')
+            .eq('rate_sr_no', rateSrNo),
+          7000
+        );
 
-      if (measurementsError) throw measurementsError;
+        const { data: measurementsForRate, error: measurementsError } = measResp || {};
+        if (measurementsError) {
+          console.error('Fetch measurements error:', measurementsError);
+          throw new Error(`Failed to fetch measurements: ${measurementsError.message}`);
+        }
 
-      const totalCalculatedQuantity =
-        measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+        totalCalculatedQuantity =
+          measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+      } catch (err) {
+        console.error('Measurements fetch timeout or error:', err);
+        throw new Error('Failed to fetch measurements (timeout or network issue)');
+      }
 
       const fetchedRate = mappedRate?.rate;
       const rateTotalAmount = totalCalculatedQuantity * fetchedRate;
 
-      const { error: updateRateError } = await supabase
-        .schema('estimate')
-        .from('item_rates')
-        .update({
-          ssr_quantity: totalCalculatedQuantity,
-          rate_total_amount: rateTotalAmount
-        })
-        .eq('sr_no', rateSrNo);
+      try {
+        const updateResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_rates')
+            .update({
+              ssr_quantity: totalCalculatedQuantity,
+              rate_total_amount: rateTotalAmount
+            })
+            .eq('sr_no', rateSrNo),
+          7000
+        );
 
-      if (updateRateError) throw updateRateError;
+        const { error: updateRateError } = updateResp || {};
+        if (updateRateError) {
+          console.error('Update rate error:', updateRateError);
+          throw new Error(`Failed to update rate: ${updateRateError.message}`);
+        }
+      } catch (err) {
+        console.error('Update rate timeout or error:', err);
+        throw new Error('Failed to update rate (timeout or network issue)');
+      }
 
+      // Reset form and close modal
       setShowAddModal(false);
       setNewMeasurement({
         factor: 1,
@@ -496,15 +567,20 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
       setIsReferencing(false);
       setSelectedReferenceItem(null);
 
-      fetchData();
+      // Fetch fresh data
+      await fetchData();
 
+      // Update item SSR quantity after a brief delay to ensure data is committed
       setTimeout(async () => {
         await updateItemSSRQuantity();
-      }, 100);
+      }, 200);
+
+      alert('Measurement added successfully!');
 
     } catch (error) {
       console.error('Error adding measurement:', error);
-      alert(`Failed to add measurement: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to add measurement: ${errorMessage}`);
     }
   };
 
@@ -646,6 +722,9 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
     }
 
     try {
+      // 🔄 Refresh session before operations (best-effort, with timeout)
+      await refreshSessionSafely(3000);
+
       const calculatedQuantity = calculateQuantity();
 
       // Validate calculated quantity
@@ -657,15 +736,28 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
       const rate = selectedRate;
 
       // Fetch rate data (remove .single(), use first entry)
-      const { data: rateDataArray, error: rateFetchError } = await supabase
-        .schema('estimate')
-        .from('item_rates')
-        .select('sr_no, rate, subwork_item_sr_no')
-        .eq('subwork_item_sr_no', selectedMeasurement.subwork_item_id);
+      let rateData: any = null;
+      try {
+        const rateResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_rates')
+            .select('sr_no, rate, subwork_item_sr_no')
+            .eq('subwork_item_sr_no', selectedMeasurement.subwork_item_id),
+          7000
+        );
 
-      if (rateFetchError) throw rateFetchError;
-      if (!rateDataArray || rateDataArray.length === 0) throw new Error('No rate data found');
-      const rateData = rateDataArray[0];
+        const { data: rateDataArray, error: rateFetchError } = rateResp || {};
+        if (rateFetchError) {
+          console.error('Rate fetch error:', rateFetchError);
+          throw new Error(`Failed to fetch rate data: ${rateFetchError.message}`);
+        }
+        if (!rateDataArray || rateDataArray.length === 0) throw new Error('No rate data found');
+        rateData = rateDataArray[0];
+      } catch (err) {
+        console.error('Rate fetch timeout or error:', err);
+        throw new Error('Failed to fetch rate data (timeout or network issue)');
+      }
 
       const rateSrNo = rateData?.sr_no;
 
@@ -691,32 +783,60 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
         .eq('subwork_item_id', selectedMeasurement.subwork_item_id)
         .eq('measurement_sr_no', selectedMeasurement.measurement_sr_no);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update measurement error:', error);
+        throw new Error(`Failed to update measurement: ${error.message}`);
+      }
 
       // Sum all calculated_quantity for this rate_sr_no from item_measurements table
-      const { data: measurementsForRate, error: measurementsError } = await supabase
-        .schema('estimate')
-        .from('item_measurements')
-        .select('calculated_quantity')
-        .eq('rate_sr_no', rateSrNo);
+      let totalCalculatedQuantity2 = 0;
+      try {
+        const measResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_measurements')
+            .select('calculated_quantity')
+            .eq('rate_sr_no', rateSrNo),
+          7000
+        );
 
-      if (measurementsError) throw measurementsError;
+        const { data: measurementsForRate, error: measurementsError } = measResp || {};
+        if (measurementsError) {
+          console.error('Fetch measurements error:', measurementsError);
+          throw new Error(`Failed to fetch measurements: ${measurementsError.message}`);
+        }
 
-      const totalCalculatedQuantity = measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+        totalCalculatedQuantity2 = measurementsForRate?.reduce((sum, m) => sum + (m.calculated_quantity || 0), 0) || 0;
+      } catch (err) {
+        console.error('Measurements fetch timeout or error:', err);
+        throw new Error('Failed to fetch measurements (timeout or network issue)');
+      }
 
       const fetchedRate = rateData?.rate;
-      const rateTotalAmount = totalCalculatedQuantity * fetchedRate;
+      const rateTotalAmount = totalCalculatedQuantity2 * fetchedRate;
 
-      const { error: updateRateError } = await supabase
-        .schema('estimate')
-        .from('item_rates')
-        .update({
-          ssr_quantity: totalCalculatedQuantity,
-          rate_total_amount: rateTotalAmount
-        })
-        .eq('sr_no', rateSrNo);
+      try {
+        const updateResp: any = await withTimeout(
+          supabase
+            .schema('estimate')
+            .from('item_rates')
+            .update({
+              ssr_quantity: totalCalculatedQuantity2,
+              rate_total_amount: rateTotalAmount
+            })
+            .eq('sr_no', rateSrNo),
+          7000
+        );
 
-      if (updateRateError) throw updateRateError;
+        const { error: updateRateError } = updateResp || {};
+        if (updateRateError) {
+          console.error('Update rate error:', updateRateError);
+          throw new Error(`Failed to update rate: ${updateRateError.message}`);
+        }
+      } catch (err) {
+        console.error('Update rate timeout or error:', err);
+        throw new Error('Failed to update rate (timeout or network issue)');
+      }
 
       setShowEditModal(false);
       setSelectedMeasurement(null);
@@ -729,14 +849,20 @@ const ItemMeasurements: React.FC<ItemMeasurementsProps> = ({
       });
       setSelectedRate(0);
 
-      fetchData();
+      // Fetch fresh data
+      await fetchData();
 
+      // Update item SSR quantity after a brief delay to ensure data is committed
       setTimeout(async () => {
         await updateItemSSRQuantity();
-      }, 100);
+      }, 200);
+
+      alert('Measurement updated successfully!');
+
     } catch (error) {
       console.error('Error updating measurement:', error);
-      alert(`Failed to update measurement: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to update measurement: ${errorMessage}`);
     }
   };
 

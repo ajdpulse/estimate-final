@@ -199,7 +199,7 @@ export const EstimateRateAnalysis: React.FC<EstimateRateAnalysisProps> = ({
                           Say Rs.
                         </td>
                         <td className="border border-black p-2 text-right">
-                          {Math.round(totalAmount).toFixed(2)}
+                          {(Math.round(Number(totalAmount || 0) / 0.05) * 0.05).toFixed(2)}
                         </td>
                         <td className="border border-black p-2 text-center">
                           {item.ssr_unit || 'CUM'}
